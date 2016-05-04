@@ -1,6 +1,6 @@
 {
   "name": "redis_engine",
-  "version": "0.7",
+  "version": "0.8",
   "description": "Redis engine backend",
   "repository": {
     "type": "git",
