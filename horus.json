@@ -1,0 +1,11 @@
+{
+  "name": "redis_engine",
+  "version": "0.7",
+  "description": "Redis engine backend",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/crambit/horuspack-redis-engine"
+  },
+  "author": "Eric Lafleur <eric@crambit.com>",
+  "license": "EPL"
+}
