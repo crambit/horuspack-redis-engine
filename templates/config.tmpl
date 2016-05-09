@@ -3,7 +3,7 @@
   (:require [taoensso.carmine :as car]
             [clojure.string :as cstr]))
 
-(defmacro ^:private wcar* [& body] `(car/wcar {:pool {} :spec {:uri "{{redis_url}}"}} ~@body))
+(defmacro ^:private wcar* [& body] `(car/wcar {:pool {} :spec {:uri "{{&redis_url}}"}} ~@body))
 
 ;; individual sorted set max size
 (def ^:private MAX_EVENTS 1000)
