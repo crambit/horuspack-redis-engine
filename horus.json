@@ -1,10 +1,10 @@
 {
-  "name": "redis_engine",
-  "version": "0.9",
-  "description": "Redis engine backend",
+  "name": "tslog_redis",
+  "version": "0.10",
+  "description": "tslog for Redis engine",
   "repository": {
     "type": "git",
-    "url": "https://github.com/crambit/horuspack-redis-engine"
+    "url": "https://github.com/crambit/horuspack-tslog-redis"
   },
   "author": "Eric Lafleur <eric@crambit.com>",
   "license": "EPL"

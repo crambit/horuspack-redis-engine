@@ -1,5 +1,5 @@
-(ns core.engine.config
-  "Redis engine backend"
+(ns core.tslog.config
+  "tslog for Redis engine"
   (:require [taoensso.carmine :as car]
             [clojure.string :as cstr]))
 
