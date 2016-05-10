@@ -1,6 +1,6 @@
-# redis-engine horus package [core]
+# tslog-redis horus package [core]
 
-Redis engine backend.
+tslog for Redis engine.
 
 ## License
 
