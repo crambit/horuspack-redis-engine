@@ -1,7 +1,7 @@
 ; -*- mode: clojure; -*-
 ; vim: filetype=clojure
 
-(ns core.tslog.config
+(ns core.tslog.config.main
   "tslog for Redis engine"
   (:require [taoensso.carmine :as car]
             [clojure.string :as cstr]))
@@ -51,17 +51,17 @@
 
 (defn time-series
   "Record events metric for the collection at the specified stats granularities."
-  [& {:keys [coll groupby]}]
+  [& {:keys [groupby]}]
   (fn [event]
     (doseq [gran granularities]
-      (let [coll (or coll (:service event))
+      (let [coll (or (:collection event) (:service event) (:key event))
             properties (val gran)
             key-timestamp (get-rounded-time (:ttl properties) (:time event))]
         (cond
           (= groupby "host")
-            (record-hit properties key-timestamp (cstr/join ":" [coll (name (key gran)) groupby (:host event) key-timestamp]) event)
+            (record-hit properties key-timestamp (cstr/join ":" [coll (name (key gran)) (:host event) key-timestamp]) event)
           (= groupby "service")
-            (record-hit properties key-timestamp (cstr/join ":" [coll (name (key gran)) groupby (:service event) properties key-timestamp]) event)
+            (record-hit properties key-timestamp (cstr/join ":" [coll (name (key gran)) (:service event) properties key-timestamp]) event)
           :else
-            (record-hit properties key-timestamp (cstr/join ":" [coll (name (key gran)) key-timestamp]) event))))))
+            (record-hit properties key-timestamp (cstr/join ":" [coll (name (key gran)) coll key-timestamp]) event))))))
 
