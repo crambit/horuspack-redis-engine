@@ -1,1 +1,18 @@
-redis_url: "//localhost:6379"
+redis_url: 'redis://localhost:6379'
+
+# individual sorted set max size
+max-events: 1000
+
+# granularities (in seconds)
+ss: 
+ ttl: 300
+ duration: 5
+mm: 
+  ttl: 21600
+  duration: 60
+hh: 
+  ttl: 604800
+  duration: 3600
+dd: 
+  ttl: 2419200
+  duration: 86400

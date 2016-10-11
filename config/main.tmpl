@@ -1,67 +1,96 @@
 ; -*- mode: clojure; -*-
 ; vim: filetype=clojure
 
-(ns core.tslog.config.main
+(ns horus.tslog.config.main
   "tslog for Redis engine"
   (:require [taoensso.carmine :as car]
             [clojure.string :as cstr]))
 
 (defmacro ^:private wcar* [& body] `(car/wcar {:pool {} :spec {:uri "{{&redis_url}}"}} ~@body))
 
-;; individual sorted set max size
-(def ^:private MAX_EVENTS 1000)
-
 (defn persist-event
   "Persist event to a sorted set stored at key"
   [& key]
   (fn [event]
-    (let [key (or key "events")]
+    (let [key (or key "hobs-events")]
       (try
         (wcar* (car/zadd key (:time event) event)
-               (car/zremrangebyrank key 0 (* -1 MAX_EVENTS)))
+               (car/zremrangebyrank key 0 (* -1 {{&max-events}})))
         (catch Exception e
           (prn (str "RedisError -> " e)))))))
 
-
 ;; define granularities constants
-(def ^:private granularities {:ss {:ttl 300 :duration 1}
-                              :mm {:ttl 21600 :duration 60}
-                              :hh {:ttl 604800 :duration 3600}
-                              :dd {:ttl 2419200 :duration 86400}})
+(def ^:private granularities {:ss {:ttl {{&ss.ttl}} :duration {{&ss.duration}}}
+                              :mm {:ttl {{&mm.ttl}} :duration {{&mm.duration}}}
+                              :hh {:ttl {{&hh.ttl}} :duration {{&hh.duration}}}
+                              :dd {:ttl {{&dd.ttl}} :duration {{&dd.duration}}}})
 
 (defn- get-rounded-time
   "Round timestamp to the precision interval (in seconds)."
-  [precision & args]
-  (let [time (first args)
-        time (or time (quot (System/currentTimeMillis) 1000))]
+  [precision time]
+  (let [time (or (int time) (quot (System/currentTimeMillis) 1000))]
     (* (quot time precision) precision)))
+
+(defn- get-rounded-time-tz
+  "Round timestamp to the precision interval (in seconds) adjusted to local timezone."
+  [precision time]
+  (let [time (or (int time) (quot (System/currentTimeMillis) 1000))
+        offset (quot (-> (java.util.TimeZone/getDefault) (.getOffset (* time 1000))) 1000)]
+    (* (quot (+ time offset) precision) precision)))
 
 (defn- record-hit
   "Record a hit for the collection at the specified stats granularity."
-  [properties key-timestamp tmp-key event]
-  (let [tmp-key-count (cstr/join ":" [tmp-key "count"])
-        hit-timestamp (get-rounded-time (:duration properties) (:time event))]
+  [properties key-timestamp tmp-key group event]
+  (let [set-key (cstr/join ":" [tmp-key "group"])
+        group-key (cstr/join ":" [tmp-key group])
+        count-key (cstr/join ":" [group-key "count"])
+        hit-timestamp (get-rounded-time-tz (:duration properties) (:time event))
+        exp-timestamp (get-rounded-time (:ttl properties) (:time event))]
     (try
-      (wcar* (car/hincrbyfloat tmp-key hit-timestamp (:metric event))
-             (car/expireat tmp-key (+ key-timestamp (* 2 (:ttl properties))))
-             (car/hincrby tmp-key-count hit-timestamp 1)
-             (car/expireat tmp-key-count (+ key-timestamp (* 2 (:ttl properties)))))
+      (wcar* (car/hincrbyfloat group-key hit-timestamp (float (:metric event)))
+             (car/expireat group-key (+ exp-timestamp (* 2 (:ttl properties))))
+             (car/hincrby count-key hit-timestamp 1)
+             (car/expireat count-key (+ exp-timestamp (* 2 (:ttl properties))))
+             (car/sadd set-key group)
+             (car/expireat set-key (+ exp-timestamp (* 2 (:ttl properties)))))
       (catch Exception e
         (prn (str "RedisError -> " e))))))
 
 (defn time-series
-  "Record events metric for the collection at the specified stats granularities."
+  "Record events metric for the collection at each stats granularities."
   [& {:keys [groupby]}]
   (fn [event]
+    (assert (:collection event))
     (doseq [gran granularities]
-      (let [coll (or (:collection event) (:service event) (:key event))
+      (let [coll (cstr/join ["{" (:collection event) "}"])
             properties (val gran)
-            key-timestamp (get-rounded-time (:ttl properties) (:time event))]
+            key-timestamp (get-rounded-time-tz (:ttl properties) (:time event))]
         (cond
           (= groupby "host")
-            (record-hit properties key-timestamp (cstr/join ":" [coll (name (key gran)) (:host event) key-timestamp]) event)
+          (record-hit properties key-timestamp (cstr/join ":" [coll (name (key gran)) key-timestamp]) (:host event) event)
           (= groupby "service")
-            (record-hit properties key-timestamp (cstr/join ":" [coll (name (key gran)) (:service event) properties key-timestamp]) event)
+          (record-hit properties key-timestamp (cstr/join ":" [coll (name (key gran)) key-timestamp]) (:service event) event)
           :else
-            (record-hit properties key-timestamp (cstr/join ":" [coll (name (key gran)) coll key-timestamp]) event))))))
+          (record-hit properties key-timestamp (cstr/join ":" [coll (name (key gran)) key-timestamp]) coll event))))))
 
+(defn- record-alert
+  "Record an alert for the collection at the specified stats granularity."
+  [properties key-timestamp tmp-key event time]
+  (let [alert-key (cstr/join ":" [tmp-key "alert"])
+        hit-timestamp (get-rounded-time-tz (:duration properties) time)
+        exp-timestamp (get-rounded-time (:ttl properties) time)]
+    (try
+      (wcar* (car/hincrby alert-key hit-timestamp 1)
+             (car/expireat alert-key (+ exp-timestamp (* 2 (:ttl properties)))))
+      (catch Exception e
+        (prn (str "RedisError -> " e))))))
+
+(defn save-alert
+  "Save events alert for the collection at each stats granularities."
+  [event]
+  (let [time (quot (System/currentTimeMillis) 1000)]
+    (doseq [gran granularities]
+      (let [coll (cstr/join ["{" (:collection event) "}"])
+            properties (val gran)
+            key-timestamp (get-rounded-time-tz (:ttl properties) time)]
+        (record-alert properties key-timestamp (cstr/join ":" [coll (name (key gran)) key-timestamp]) event time)))))

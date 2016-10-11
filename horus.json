@@ -1,6 +1,6 @@
 {
   "name": "tslog_redis",
-  "version": "0.14",
+  "version": "0.30",
   "description": "tslog for Redis engine",
   "repository": {
     "type": "git",
